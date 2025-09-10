@@ -28,6 +28,9 @@ param(
 $ErrorActionPreference = "Stop"
 $script:CurrentVersion = "23H2"
 $script:BuildNumber = 22631
+$script:LogPath = "$env:ProgramData\Block24H2\logs"
+$script:ScriptPath = "$env:ProgramData\Block24H2\Block-24H2.ps1"
+$script:LogFile = "$script:LogPath\Block-24H2-$(Get-Date -Format 'yyyy-MM').log"
 
 # Help text
 if ($Help) {
@@ -72,6 +75,13 @@ EXAMPLES:
     exit 0
 }
 
+# Initialize logging
+function Initialize-Logging {
+    if (-not (Test-Path $script:LogPath)) {
+        New-Item -Path $script:LogPath -ItemType Directory -Force | Out-Null
+    }
+}
+
 # Logging function
 function Write-Log {
     param(
@@ -81,6 +91,7 @@ function Write-Log {
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
     $color = switch ($Level) {
         "Success" { "Green" }
         "Warning" { "Yellow" }
@@ -88,12 +99,21 @@ function Write-Log {
         default   { "White" }
     }
     
+    # Console output
     if (-not $Silent) {
         Write-Host "[$timestamp] $Message" -ForegroundColor $color
     }
     
     if ($Verbose) {
         Write-Verbose "[$Level] $Message"
+    }
+    
+    # File logging
+    try {
+        Initialize-Logging
+        Add-Content -Path $script:LogFile -Value $logEntry -ErrorAction SilentlyContinue
+    } catch {
+        # Silent fail for logging - don't break the main functionality
     }
 }
 
@@ -102,6 +122,185 @@ function Test-Administrator {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# Attempt to elevate privileges
+function Request-Elevation {
+    param([string]$Mode)
+    
+    Write-Log "Attempting to elevate privileges..." "Warning"
+    
+    # Try gsudo first (preferred)
+    if (Get-Command gsudo -ErrorAction SilentlyContinue) {
+        Write-Log "Found gsudo, attempting elevation..." "Info"
+        try {
+            $args = @("-ArgumentList", "\"-ExecutionPolicy\", \"Bypass\", \"-File\", \"$($MyInvocation.MyCommand.Path)\"")
+            if ($Mode) { $args += ", \"-Mode\", \"$Mode\", \"-Silent\"" }
+            Start-Process gsudo -ArgumentList "powershell.exe", $args -Wait
+            return $true
+        } catch {
+            Write-Log "gsudo elevation failed: $($_.Exception.Message)" "Warning"
+        }
+    }
+    
+    # Try sudo (if available)
+    if (Get-Command sudo -ErrorAction SilentlyContinue) {
+        Write-Log "Found sudo, attempting elevation..." "Info"
+        try {
+            $args = @("-ArgumentList", "\"-ExecutionPolicy\", \"Bypass\", \"-File\", \"$($MyInvocation.MyCommand.Path)\"")
+            if ($Mode) { $args += ", \"-Mode\", \"$Mode\", \"-Silent\"" }
+            Start-Process sudo -ArgumentList "powershell.exe", $args -Wait
+            return $true
+        } catch {
+            Write-Log "sudo elevation failed: $($_.Exception.Message)" "Warning"
+        }
+    }
+    
+    # Fallback: UAC elevation
+    try {
+        Write-Log "Attempting UAC elevation..." "Info"
+        $arguments = "-ExecutionPolicy Bypass -File `\"$($MyInvocation.MyCommand.Path)`\""
+        if ($Mode) { $arguments += " -Mode $Mode -Silent" }
+        
+        Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait
+        return $true
+    } catch {
+        Write-Log "UAC elevation failed: $($_.Exception.Message)" "Warning"
+        return $false
+    }
+}
+
+# Show admin instructions
+function Show-AdminInstructions {
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
+    Write-Host "              ADMINISTRATOR PRIVILEGES REQUIRED               " -ForegroundColor Red
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "This script requires Administrator privileges to modify Windows Update settings." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Please run this script as Administrator using one of these methods:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Method 1: Right-click PowerShell and select 'Run as Administrator'" -ForegroundColor Cyan
+    Write-Host "Method 2: Use gsudo (if installed): gsudo powershell -File Block-24H2.ps1" -ForegroundColor Cyan
+    Write-Host "Method 3: Use Windows Terminal as Admin" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Then run: .\Block-24H2.ps1" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Red
+}
+
+# Copy script to persistence location
+function Copy-ScriptToPersistentLocation {
+    Write-Log "Copying script to persistent location..." "Info"
+    
+    $destDir = Split-Path $script:ScriptPath -Parent
+    if (-not (Test-Path $destDir)) {
+        New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+        Write-Log "Created directory: $destDir" "Success"
+    }
+    
+    # Copy current script to persistent location
+    Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $script:ScriptPath -Force
+    Write-Log "Script copied to: $script:ScriptPath" "Success"
+    
+    return $script:ScriptPath
+}
+
+# Enhanced scheduled task creation
+function New-ScheduledBlockTask {
+    param(
+        [string]$SelectedMode,
+        [string]$ScriptLocation = $script:ScriptPath
+    )
+    
+    Write-Log "Creating scheduled task for $SelectedMode mode..." "Info"
+    
+    $taskName = "Block-Windows11-24H2-$SelectedMode"
+    $description = "Prevents Windows 11 24H2 feature update using $SelectedMode protection mode"
+    
+    # Remove existing task if it exists
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    } catch { }
+    
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `\"$ScriptLocation`\" -Mode $SelectedMode -Silent"
+    
+    $trigger = New-ScheduledTaskTrigger -Daily -At "3:00 AM"
+    
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RunOnlyIfNetworkAvailable:$false `
+        -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 5)
+    
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    
+    try {
+        Register-ScheduledTask -TaskName $taskName -Description $description -Action $action -Trigger $trigger `
+            -Settings $settings -Principal $principal -Force | Out-Null
+        
+        Write-Log "Created scheduled task: $taskName" "Success"
+        Write-Log "Task will run daily at 3:00 AM with $SelectedMode protection" "Info"
+        return $true
+    } catch {
+        Write-Log "Failed to create scheduled task: $($_.Exception.Message)" "Error"
+        return $false
+    }
+}
+
+# Prompt for scheduled task installation
+function Request-ScheduledTaskInstallation {
+    param([string]$SelectedMode)
+    
+    Write-Host ""
+    Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
+    Write-Host "║                 Scheduled Task Setup                      ║" -ForegroundColor Green
+    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Would you like to install a scheduled task to automatically" -ForegroundColor Yellow
+    Write-Host "maintain 24H2 protection using the $SelectedMode mode?" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "This will:" -ForegroundColor White
+    Write-Host "  • Copy the script to a secure system location" -ForegroundColor Gray
+    Write-Host "  • Create a daily scheduled task (3:00 AM)" -ForegroundColor Gray
+    Write-Host "  • Run with SYSTEM privileges" -ForegroundColor Gray
+    Write-Host "  • Maintain protection even after Windows updates" -ForegroundColor Gray
+    Write-Host ""
+    
+    do {
+        $response = Read-Host "Install scheduled task? (Y/N)"
+        $response = $response.ToUpper()
+    } while ($response -ne "Y" -and $response -ne "N")
+    
+    if ($response -eq "Y") {
+        Write-Host ""
+        Write-Log "Installing scheduled task..." "Info"
+        
+        # Copy script to persistent location
+        $persistentScript = Copy-ScriptToPersistentLocation
+        
+        # Create scheduled task
+        if (New-ScheduledBlockTask -SelectedMode $SelectedMode -ScriptLocation $persistentScript) {
+            Write-Host ""
+            Write-Host "✓ Scheduled task installed successfully!" -ForegroundColor Green
+            Write-Host "  Task Name: Block-Windows11-24H2-$SelectedMode" -ForegroundColor Gray
+            Write-Host "  Schedule: Daily at 3:00 AM" -ForegroundColor Gray
+            Write-Host "  Script Location: $persistentScript" -ForegroundColor Gray
+            Write-Host "  Log Location: $script:LogPath" -ForegroundColor Gray
+        } else {
+            Write-Host ""
+            Write-Host "✗ Failed to install scheduled task" -ForegroundColor Red
+        }
+    } else {
+        Write-Host ""
+        Write-Host "Scheduled task installation skipped." -ForegroundColor Yellow
+        Write-Host "You can run this script manually as needed." -ForegroundColor Gray
+    }
 }
 
 # TUI Menu Function
@@ -432,12 +631,50 @@ function New-ScheduledBlockTask {
 
 # Main execution
 function Main {
+    # Initialize logging first
+    try {
+        Initialize-Logging
+        Write-Log "Block-24H2 script started" "Info"
+    } catch {
+        # Continue if logging fails
+    }
+    
     # Check admin rights
     if (-not (Test-Administrator)) {
-        Write-Host "ERROR: This script requires Administrator privileges" -ForegroundColor Red
-        Write-Host "Please run as Administrator" -ForegroundColor Yellow
-        exit 1
+        Write-Log "Script requires Administrator privileges" "Warning"
+        
+        # In non-interactive mode, try elevation
+        if ($Mode -or $Silent) {
+            Write-Log "Attempting automatic elevation for non-interactive mode" "Info"
+            if (Request-Elevation -Mode $Mode) {
+                Write-Log "Elevation successful, exiting this instance" "Info"
+                exit 0
+            } else {
+                Write-Log "Elevation failed" "Error"
+                Show-AdminInstructions
+                exit 1
+            }
+        } else {
+            # Interactive mode - ask user
+            Write-Host ""
+            $elevate = Read-Host "Attempt to elevate privileges automatically? (Y/N)"
+            if ($elevate -eq "Y" -or $elevate -eq "y") {
+                if (Request-Elevation) {
+                    Write-Log "Elevation successful, exiting this instance" "Info"
+                    exit 0
+                } else {
+                    Write-Log "Automatic elevation failed" "Warning"
+                    Show-AdminInstructions
+                    exit 1
+                }
+            } else {
+                Show-AdminInstructions
+                exit 1
+            }
+        }
     }
+    
+    Write-Log "Running with Administrator privileges" "Success"
     
     # Non-interactive mode
     if ($Mode -or $Silent) {
@@ -479,18 +716,21 @@ function Main {
             "1" {
                 Write-Host ""
                 Set-BasicBlock
+                Request-ScheduledTaskInstallation -SelectedMode "Basic"
                 Write-Host "`nPress any key to continue..." -ForegroundColor Gray
                 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "2" {
                 Write-Host ""
                 Set-EnhancedBlock
+                Request-ScheduledTaskInstallation -SelectedMode "Enhanced"
                 Write-Host "`nPress any key to continue..." -ForegroundColor Gray
                 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "3" {
                 Write-Host ""
                 Set-SelectiveBlock
+                Request-ScheduledTaskInstallation -SelectedMode "Selective"
                 Write-Host "`nPress any key to continue..." -ForegroundColor Gray
                 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }

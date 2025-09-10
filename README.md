@@ -6,7 +6,7 @@ PowerShell scripts to prevent automatic Windows 11 24H2 feature updates while ma
 
 ### Interactive Mode (TUI)
 ```powershell
-# Run with menu interface
+# Run with menu interface (will auto-elevate if needed)
 .\Block-24H2.ps1
 ```
 
@@ -24,6 +24,13 @@ PowerShell scripts to prevent automatic Windows 11 24H2 feature updates while ma
 # Remove all blocks
 .\Block-24H2.ps1 -Mode Remove -Silent
 ```
+
+### Auto-Elevation
+The script automatically attempts to elevate privileges using:
+1. **gsudo** (if installed) - preferred method
+2. **sudo** (if available) 
+3. **UAC elevation** - Windows built-in
+4. **Manual instructions** - if auto-elevation fails
 
 ## Protection Modes
 
@@ -59,6 +66,14 @@ PowerShell scripts to prevent automatic Windows 11 24H2 feature updates while ma
 
 ## Schedule Automatic Protection
 
+### Interactive Setup (Recommended)
+Run any protection mode and you'll be prompted to install a scheduled task:
+```powershell
+.\Block-24H2.ps1
+# Choose protection mode → Script asks about scheduled task → Done!
+```
+
+### Command Line Setup
 ```powershell
 # Run selective mode daily at 3 AM
 .\Block-24H2.ps1 -Mode Selective -ScheduleTask -Schedule Daily
@@ -66,6 +81,12 @@ PowerShell scripts to prevent automatic Windows 11 24H2 feature updates while ma
 # Run on system boot
 .\Block-24H2.ps1 -Mode Selective -ScheduleTask -Schedule OnBoot
 ```
+
+**What happens when you install a scheduled task:**
+- Script copies itself to `C:\ProgramData\Block24H2\`
+- Creates daily task running at 3:00 AM with SYSTEM privileges
+- Maintains protection even after Windows updates
+- Logs activity to `C:\ProgramData\Block24H2\logs\`
 
 ## Verify Protection Status
 
@@ -80,8 +101,15 @@ Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" | Sel
 ## Requirements
 
 - Windows 11
-- Administrator privileges
 - PowerShell 5.1 or higher
+- Administrator privileges (script will auto-elevate)
+
+## Logging
+
+Activity is automatically logged to:
+- **Location**: `C:\ProgramData\Block24H2\logs\`
+- **Format**: Monthly log files (`Block-24H2-YYYY-MM.log`)
+- **Contents**: All script actions, errors, and status updates
 
 ## What Gets Blocked vs Allowed
 
