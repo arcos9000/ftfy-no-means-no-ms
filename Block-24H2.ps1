@@ -28,8 +28,8 @@ param(
 $ErrorActionPreference = "Stop"
 $script:CurrentVersion = "23H2"
 $script:BuildNumber = 22631
-$script:LogPath = "$env:ProgramData\Block24H2\logs"
-$script:ScriptPath = "$env:ProgramData\Block24H2\Block-24H2.ps1"
+$script:LogPath = "$env:ProgramData\ftfy-no-means-no\logs"
+$script:ScriptPath = "$env:ProgramData\ftfy-no-means-no\Block-24H2.ps1"
 $script:LogFile = "$script:LogPath\Block-24H2-$(Get-Date -Format 'yyyy-MM').log"
 
 # Help text

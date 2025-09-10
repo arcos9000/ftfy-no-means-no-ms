@@ -83,10 +83,10 @@ Run any protection mode and you'll be prompted to install a scheduled task:
 ```
 
 **What happens when you install a scheduled task:**
-- Script copies itself to `C:\ProgramData\Block24H2\`
+- Script copies itself to `C:\ProgramData\ftfy-no-means-no\`
 - Creates daily task running at 3:00 AM with SYSTEM privileges
 - Maintains protection even after Windows updates
-- Logs activity to `C:\ProgramData\Block24H2\logs\`
+- Logs activity to `C:\ProgramData\ftfy-no-means-no\logs\`
 
 ## Verify Protection Status
 
@@ -107,7 +107,7 @@ Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" | Sel
 ## Logging
 
 Activity is automatically logged to:
-- **Location**: `C:\ProgramData\Block24H2\logs\`
+- **Location**: `C:\ProgramData\ftfy-no-means-no\logs\`
 - **Format**: Monthly log files (`Block-24H2-YYYY-MM.log`)
 - **Contents**: All script actions, errors, and status updates
 
