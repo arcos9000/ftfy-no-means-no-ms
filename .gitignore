@@ -1,0 +1,19 @@
+# Windows PowerShell
+*.log
+*.tmp
+*.bak
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test outputs
+test-results/
+*.test.txt
+
+# Sensitive data
+*.key
+*.credential
+credentials.xml
