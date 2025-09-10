@@ -15,9 +15,6 @@ param(
     [switch]$WhatIf,
     
     [Parameter()]
-    [switch]$Verbose,
-    
-    [Parameter()]
     [switch]$ScheduleTask,
     
     [Parameter()]
@@ -38,16 +35,19 @@ if ($Help) {
 Block-24H2.ps1 - Windows 11 24H2 Update Blocker
 
 USAGE:
-    .\Block-24H2.ps1 [-Mode <mode>] [-Silent] [-WhatIf] [-Verbose] [-ScheduleTask] [-Schedule <schedule>]
+    .\Block-24H2.ps1 [-Mode <mode>] [-Silent] [-WhatIf] [-ScheduleTask] [-Schedule <schedule>]
 
 PARAMETERS:
     -Mode           Protection level: Basic, Enhanced, Selective, Remove
     -Silent         Run without prompts (non-interactive)
     -WhatIf         Test mode - show what would be done without making changes
-    -Verbose        Show detailed output
     -ScheduleTask   Create a scheduled task to run this script
     -Schedule       Schedule frequency: Daily, Weekly, OnBoot (default: Daily)
     -Help           Show this help message
+    
+COMMON PARAMETERS (automatically available):
+    -Verbose        Show detailed output
+    -Debug          Show debug output
 
 MODES:
     Basic           Simple registry-based blocking (minimal)
