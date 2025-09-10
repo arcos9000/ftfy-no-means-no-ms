@@ -8,6 +8,7 @@
 .idea/
 *.swp
 *.swo
+CLAUDE.md
 
 # Test outputs
 test-results/
