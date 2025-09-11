@@ -144,21 +144,26 @@ function Request-SelfElevation {
                 # Use the same PowerShell executable that's currently running
                 $psExecutable = if ($PSVersionTable.PSVersion.Major -ge 6) { "pwsh.exe" } else { "powershell.exe" }
                 
-                # Create a simple command that will definitely work
+                # Use -File approach which is more reliable
                 $scriptPath = $MyInvocation.MyCommand.Path
-                $command = "& `"$scriptPath`""
-                
-                # Add parameters if any
-                if ($MyInvocation.BoundParameters.Count -gt 0) {
-                    $params = $MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) `"$($_.Value)`"" }
-                    $command += " $($params -join ' ')"
-                }
-                
                 $commandArgs = @(
                     '-ExecutionPolicy', 'Bypass',
                     '-NoExit',
-                    '-Command', $command
+                    '-File', $scriptPath
                 )
+                
+                # Add bound parameters
+                if ($MyInvocation.BoundParameters.Count -gt 0) {
+                    foreach ($param in $MyInvocation.BoundParameters.GetEnumerator()) {
+                        $commandArgs += "-$($param.Key)"
+                        $commandArgs += $param.Value.ToString()
+                    }
+                }
+                
+                # Add unbound arguments
+                if ($MyInvocation.UnboundArguments.Count -gt 0) {
+                    $commandArgs += $MyInvocation.UnboundArguments
+                }
                 
                 Write-Log "Launching: $psExecutable $($commandArgs -join ' ')" "Info"
                 Start-Process $psExecutable -Verb RunAs -ArgumentList $commandArgs
