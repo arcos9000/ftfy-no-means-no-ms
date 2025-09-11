@@ -130,16 +130,24 @@ function Request-Elevation {
     
     Write-Log "Attempting to elevate privileges..." "Warning"
     
+    # Get current script path
+    $scriptPath = if ($MyInvocation.MyCommand.Path) { 
+        $MyInvocation.MyCommand.Path 
+    } elseif ($PSCommandPath) { 
+        $PSCommandPath 
+    } else { 
+        (Get-Location).Path + "\Block-24H2.ps1" 
+    }
+    
     # Try gsudo first (preferred)
     if (Get-Command gsudo -ErrorAction SilentlyContinue) {
         Write-Log "Found gsudo, attempting elevation..." "Info"
         try {
-            $scriptPath = $MyInvocation.MyCommand.Path
-            $command = "& `"$scriptPath`""
-            if ($Mode) { $command += " -Mode $Mode -Silent" }
-            $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
-            $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
-            Start-Process gsudo -ArgumentList "powershell.exe", $arguments
+            if ($Mode) {
+                gsudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`"" -Mode $Mode -Silent
+            } else {
+                gsudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`""
+            }
             return $true
         } catch {
             Write-Log "gsudo elevation failed: $($_.Exception.Message)" "Warning"
@@ -150,12 +158,11 @@ function Request-Elevation {
     if (Get-Command sudo -ErrorAction SilentlyContinue) {
         Write-Log "Found sudo, attempting elevation..." "Info"
         try {
-            $scriptPath = $MyInvocation.MyCommand.Path
-            $command = "& `"$scriptPath`""
-            if ($Mode) { $command += " -Mode $Mode -Silent" }
-            $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
-            $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
-            Start-Process sudo -ArgumentList "powershell.exe", $arguments
+            if ($Mode) {
+                sudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`"" -Mode $Mode -Silent
+            } else {
+                sudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`""
+            }
             return $true
         } catch {
             Write-Log "sudo elevation failed: $($_.Exception.Message)" "Warning"
@@ -165,13 +172,11 @@ function Request-Elevation {
     # Fallback: UAC elevation
     try {
         Write-Log "Attempting UAC elevation..." "Info"
-        $scriptPath = $MyInvocation.MyCommand.Path
-        $command = "& `"$scriptPath`""
-        if ($Mode) { $command += " -Mode $Mode -Silent" }
-        $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
-        $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
-        
-        Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs
+        if ($Mode) {
+            Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-NoProfile", "-File", "`"$scriptPath`"", "-Mode", $Mode, "-Silent" -Verb RunAs
+        } else {
+            Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-NoProfile", "-File", "`"$scriptPath`"" -Verb RunAs
+        }
         return $true
     } catch {
         Write-Log "UAC elevation failed: $($_.Exception.Message)" "Warning"
@@ -765,3 +770,10 @@ function Main {
 
 # Run main
 Main
+
+# If we're in an elevated session and interactive mode, pause before exit
+if (-not $Silent -and -not $Mode) {
+    Write-Host ""
+    Write-Host "Press any key to exit..." -ForegroundColor Gray
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
