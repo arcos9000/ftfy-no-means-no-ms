@@ -139,7 +139,7 @@ function Request-Elevation {
             if ($Mode) { $command += " -Mode $Mode -Silent" }
             $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
             $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
-            Start-Process gsudo -ArgumentList "powershell.exe", $arguments -Wait
+            Start-Process gsudo -ArgumentList "powershell.exe", $arguments
             return $true
         } catch {
             Write-Log "gsudo elevation failed: $($_.Exception.Message)" "Warning"
@@ -155,7 +155,7 @@ function Request-Elevation {
             if ($Mode) { $command += " -Mode $Mode -Silent" }
             $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
             $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
-            Start-Process sudo -ArgumentList "powershell.exe", $arguments -Wait
+            Start-Process sudo -ArgumentList "powershell.exe", $arguments
             return $true
         } catch {
             Write-Log "sudo elevation failed: $($_.Exception.Message)" "Warning"
@@ -171,7 +171,7 @@ function Request-Elevation {
         $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
         $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
         
-        Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait
+        Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs
         return $true
     } catch {
         Write-Log "UAC elevation failed: $($_.Exception.Message)" "Warning"
