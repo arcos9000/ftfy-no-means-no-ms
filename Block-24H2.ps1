@@ -146,17 +146,19 @@ function Request-SelfElevation {
                 
                 # Create a simple command that will definitely work
                 $scriptPath = $MyInvocation.MyCommand.Path
-                $commandArgs = @(
-                    '-ExecutionPolicy', 'Bypass',
-                    '-NoExit',
-                    '-Command', "& '$scriptPath'"
-                )
+                $command = "& `"$scriptPath`""
                 
                 # Add parameters if any
                 if ($MyInvocation.BoundParameters.Count -gt 0) {
-                    $params = $MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) '$($_.Value)'" }
-                    $commandArgs[-1] += " $($params -join ' ')"
+                    $params = $MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) `"$($_.Value)`"" }
+                    $command += " $($params -join ' ')"
                 }
+                
+                $commandArgs = @(
+                    '-ExecutionPolicy', 'Bypass',
+                    '-NoExit',
+                    '-Command', $command
+                )
                 
                 Write-Log "Launching: $psExecutable $($commandArgs -join ' ')" "Info"
                 Start-Process $psExecutable -Verb RunAs -ArgumentList $commandArgs
