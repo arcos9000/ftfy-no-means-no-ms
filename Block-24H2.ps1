@@ -135,7 +135,7 @@ function Request-Elevation {
         Write-Log "Found gsudo, attempting elevation..." "Info"
         try {
             $scriptPath = $MyInvocation.MyCommand.Path
-            $arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`""
+            $arguments = "-ExecutionPolicy Bypass -NoExit -File `"$scriptPath`""
             if ($Mode) { $arguments += " -Mode $Mode -Silent" }
             Start-Process gsudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
@@ -149,7 +149,7 @@ function Request-Elevation {
         Write-Log "Found sudo, attempting elevation..." "Info"
         try {
             $scriptPath = $MyInvocation.MyCommand.Path
-            $arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`""
+            $arguments = "-ExecutionPolicy Bypass -NoExit -File `"$scriptPath`""
             if ($Mode) { $arguments += " -Mode $Mode -Silent" }
             Start-Process sudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
@@ -162,7 +162,7 @@ function Request-Elevation {
     try {
         Write-Log "Attempting UAC elevation..." "Info"
         $scriptPath = $MyInvocation.MyCommand.Path
-        $arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`""
+        $arguments = "-ExecutionPolicy Bypass -NoExit -File `"$scriptPath`""
         if ($Mode) { $arguments += " -Mode $Mode -Silent" }
         
         Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait
@@ -197,6 +197,24 @@ function Show-AdminInstructions {
 function Copy-ScriptToPersistentLocation {
     Write-Log "Copying script to persistent location..." "Info"
     
+    # Get current script path with fallback methods
+    $currentScriptPath = $null
+    if ($MyInvocation.MyCommand.Path) {
+        $currentScriptPath = $MyInvocation.MyCommand.Path
+    } elseif ($PSCommandPath) {
+        $currentScriptPath = $PSCommandPath
+    } elseif ($script:MyInvocation.MyCommand.Path) {
+        $currentScriptPath = $script:MyInvocation.MyCommand.Path
+    } else {
+        # Last resort - try to find the script in current directory
+        $currentScriptPath = Join-Path (Get-Location) "Block-24H2.ps1"
+        if (-not (Test-Path $currentScriptPath)) {
+            throw "Cannot determine current script location for copying"
+        }
+    }
+    
+    Write-Log "Current script path: $currentScriptPath" "Info"
+    
     $destDir = Split-Path $script:ScriptPath -Parent
     if (-not (Test-Path $destDir)) {
         New-Item -Path $destDir -ItemType Directory -Force | Out-Null
@@ -204,7 +222,7 @@ function Copy-ScriptToPersistentLocation {
     }
     
     # Copy current script to persistent location
-    Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $script:ScriptPath -Force
+    Copy-Item -Path $currentScriptPath -Destination $script:ScriptPath -Force
     Write-Log "Script copied to: $script:ScriptPath" "Success"
     
     return $script:ScriptPath
@@ -602,35 +620,6 @@ function Remove-Blocks {
     Write-Log "All blocks removed - system will follow normal update policy" "Success"
 }
 
-# Schedule task creation
-function New-ScheduledBlockTask {
-    param([string]$SelectedMode)
-    
-    Write-Log "Creating scheduled task..." "Info"
-    
-    $taskName = "Block-24H2-$SelectedMode"
-    $scriptPath = $MyInvocation.MyCommand.Path
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-        -Argument "-ExecutionPolicy Bypass -File `"$scriptPath`" -Mode $SelectedMode -Silent"
-    
-    $trigger = switch ($Schedule) {
-        "Daily"   { New-ScheduledTaskTrigger -Daily -At 3am }
-        "Weekly"  { New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 3am }
-        "OnBoot"  { New-ScheduledTaskTrigger -AtStartup }
-    }
-    
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable -RunOnlyIfNetworkAvailable:$false
-    
-    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    
-    if (-not $WhatIf) {
-        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
-            -Settings $settings -Principal $principal -Force | Out-Null
-    }
-    
-    Write-Log "Created scheduled task: $taskName ($Schedule)" "Success"
-}
 
 # Main execution
 function Main {
@@ -700,7 +689,8 @@ function Main {
         }
         
         if ($ScheduleTask -and $Mode -ne "Remove") {
-            New-ScheduledBlockTask -SelectedMode $Mode
+            $persistentScript = Copy-ScriptToPersistentLocation
+            New-ScheduledBlockTask -SelectedMode $Mode -ScriptLocation $persistentScript
         }
         
         if ($WhatIf) {
