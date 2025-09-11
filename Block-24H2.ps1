@@ -134,9 +134,9 @@ function Request-Elevation {
     if (Get-Command gsudo -ErrorAction SilentlyContinue) {
         Write-Log "Found gsudo, attempting elevation..." "Info"
         try {
-            $args = @("-ArgumentList", "\"-ExecutionPolicy\", \"Bypass\", \"-File\", \"$($MyInvocation.MyCommand.Path)\"")
-            if ($Mode) { $args += ", \"-Mode\", \"$Mode\", \"-Silent\"" }
-            Start-Process gsudo -ArgumentList "powershell.exe", $args -Wait
+            $arguments = "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+            if ($Mode) { $arguments += " -Mode $Mode -Silent" }
+            Start-Process gsudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
         } catch {
             Write-Log "gsudo elevation failed: $($_.Exception.Message)" "Warning"
@@ -147,9 +147,9 @@ function Request-Elevation {
     if (Get-Command sudo -ErrorAction SilentlyContinue) {
         Write-Log "Found sudo, attempting elevation..." "Info"
         try {
-            $args = @("-ArgumentList", "\"-ExecutionPolicy\", \"Bypass\", \"-File\", \"$($MyInvocation.MyCommand.Path)\"")
-            if ($Mode) { $args += ", \"-Mode\", \"$Mode\", \"-Silent\"" }
-            Start-Process sudo -ArgumentList "powershell.exe", $args -Wait
+            $arguments = "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+            if ($Mode) { $arguments += " -Mode $Mode -Silent" }
+            Start-Process sudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
         } catch {
             Write-Log "sudo elevation failed: $($_.Exception.Message)" "Warning"
