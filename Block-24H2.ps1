@@ -140,22 +140,26 @@ function Request-SelfElevation {
         if (Test-IsUacEnabled) {
             Write-Log "UAC is enabled, requesting elevation..." "Info"
             
-            # Build argument list with proper parameter handling
-            [string[]]$argList = @('-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path)
-            
-            # Add bound parameters
-            $argList += $MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object {
-                "-$($_.Key)"
-                "$($_.Value)"
-            }
-            
-            # Add unbound arguments
-            $argList += $MyInvocation.UnboundArguments
-            
             try {
                 # Use the same PowerShell executable that's currently running
                 $psExecutable = if ($PSVersionTable.PSVersion.Major -ge 6) { "pwsh.exe" } else { "powershell.exe" }
-                Start-Process $psExecutable -Verb RunAs -ArgumentList $argList -WorkingDirectory $PWD
+                
+                # Create a simple command that will definitely work
+                $scriptPath = $MyInvocation.MyCommand.Path
+                $commandArgs = @(
+                    '-ExecutionPolicy', 'Bypass',
+                    '-NoExit',
+                    '-Command', "& '$scriptPath'"
+                )
+                
+                # Add parameters if any
+                if ($MyInvocation.BoundParameters.Count -gt 0) {
+                    $params = $MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) '$($_.Value)'" }
+                    $commandArgs[-1] += " $($params -join ' ')"
+                }
+                
+                Write-Log "Launching: $psExecutable $($commandArgs -join ' ')" "Info"
+                Start-Process $psExecutable -Verb RunAs -ArgumentList $commandArgs
                 Write-Log "Elevation request sent, exiting current session" "Info"
                 return $true
             } catch {
