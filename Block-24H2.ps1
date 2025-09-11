@@ -153,7 +153,9 @@ function Request-SelfElevation {
             $argList += $MyInvocation.UnboundArguments
             
             try {
-                Start-Process PowerShell.exe -Verb RunAs -ArgumentList $argList -WorkingDirectory $PWD
+                # Use the same PowerShell executable that's currently running
+                $psExecutable = if ($PSVersionTable.PSVersion.Major -ge 6) { "pwsh.exe" } else { "powershell.exe" }
+                Start-Process $psExecutable -Verb RunAs -ArgumentList $argList -WorkingDirectory $PWD
                 Write-Log "Elevation request sent, exiting current session" "Info"
                 return $true
             } catch {
