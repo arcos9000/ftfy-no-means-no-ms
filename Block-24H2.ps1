@@ -756,12 +756,37 @@ function Main {
     } while ($true)
 }
 
-# Run main
-Main
-
-# If we're in an elevated session and interactive mode, pause before exit
-if (-not $Silent -and -not $Mode) {
+# Wrap main execution in try-catch to prevent window closure on errors
+try {
+    # Debug output for elevation
+    if (-not $Silent) {
+        Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)" -ForegroundColor Cyan
+        Write-Host "Script Path: $($MyInvocation.MyCommand.Path)" -ForegroundColor Cyan
+        Write-Host "Working Directory: $(Get-Location)" -ForegroundColor Cyan
+        Write-Host "Administrator: $(Test-IsAdministrator)" -ForegroundColor Cyan
+        Write-Host ""
+    }
+    
+    # Run main
+    Main
+    
+} catch {
     Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor Gray
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    Write-Host "ERROR: Script encountered an error:" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Stack Trace:" -ForegroundColor Yellow
+    Write-Host $_.ScriptStackTrace -ForegroundColor Yellow
+} finally {
+    # Always pause before exit to keep window open
+    if (-not $Silent) {
+        Write-Host ""
+        Write-Host "Press any key to exit..." -ForegroundColor Gray
+        try {
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        } catch {
+            # Fallback if ReadKey fails
+            Read-Host "Press Enter to exit"
+        }
+    }
 }
