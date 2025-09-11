@@ -134,7 +134,8 @@ function Request-Elevation {
     if (Get-Command gsudo -ErrorAction SilentlyContinue) {
         Write-Log "Found gsudo, attempting elevation..." "Info"
         try {
-            $arguments = "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+            $scriptPath = $MyInvocation.MyCommand.Path
+            $arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`""
             if ($Mode) { $arguments += " -Mode $Mode -Silent" }
             Start-Process gsudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
@@ -147,7 +148,8 @@ function Request-Elevation {
     if (Get-Command sudo -ErrorAction SilentlyContinue) {
         Write-Log "Found sudo, attempting elevation..." "Info"
         try {
-            $arguments = "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""
+            $scriptPath = $MyInvocation.MyCommand.Path
+            $arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`""
             if ($Mode) { $arguments += " -Mode $Mode -Silent" }
             Start-Process sudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
@@ -159,7 +161,8 @@ function Request-Elevation {
     # Fallback: UAC elevation
     try {
         Write-Log "Attempting UAC elevation..." "Info"
-        $arguments = "-ExecutionPolicy Bypass -File `\"$($MyInvocation.MyCommand.Path)`\""
+        $scriptPath = $MyInvocation.MyCommand.Path
+        $arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`""
         if ($Mode) { $arguments += " -Mode $Mode -Silent" }
         
         Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait
