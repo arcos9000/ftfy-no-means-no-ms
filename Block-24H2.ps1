@@ -117,70 +117,11 @@ function Write-Log {
     }
 }
 
-# Self-elevation function using proven industry standard approach
+# Check for admin privileges
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
-function Test-IsUacEnabled {
-    try {
-        $uacSetting = (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System -ErrorAction SilentlyContinue).EnableLua
-        return ($uacSetting -ne 0)
-    } catch {
-        return $true  # Assume UAC is enabled if we can't check
-    }
-}
-
-function Request-SelfElevation {
-    Write-Log "Attempting self-elevation..." "Warning"
-    
-    if (!(Test-IsAdministrator)) {
-        if (Test-IsUacEnabled) {
-            Write-Log "UAC is enabled, requesting elevation..." "Info"
-            
-            try {
-                # Use the same PowerShell executable that's currently running
-                $psExecutable = if ($PSVersionTable.PSVersion.Major -ge 6) { "pwsh.exe" } else { "powershell.exe" }
-                
-                # Use -File approach which is more reliable
-                $scriptPath = $MyInvocation.MyCommand.Path
-                $commandArgs = @(
-                    '-ExecutionPolicy', 'Bypass',
-                    '-NoExit',
-                    '-File', $scriptPath
-                )
-                
-                # Add bound parameters
-                if ($MyInvocation.BoundParameters.Count -gt 0) {
-                    foreach ($param in $MyInvocation.BoundParameters.GetEnumerator()) {
-                        $commandArgs += "-$($param.Key)"
-                        $commandArgs += $param.Value.ToString()
-                    }
-                }
-                
-                # Add unbound arguments
-                if ($MyInvocation.UnboundArguments.Count -gt 0) {
-                    $commandArgs += $MyInvocation.UnboundArguments
-                }
-                
-                Write-Log "Launching: $psExecutable $($commandArgs -join ' ')" "Info"
-                Start-Process $psExecutable -Verb RunAs -ArgumentList $commandArgs
-                Write-Log "Elevation request sent, exiting current session" "Info"
-                return $true
-            } catch {
-                Write-Log "Failed to request elevation: $($_.Exception.Message)" "Error"
-                return $false
-            }
-        } else {
-            Write-Log "UAC is disabled - you must run as administrator manually" "Error"
-            return $false
-        }
-    } else {
-        Write-Log "Already running as administrator" "Success"
-        return $false  # No elevation needed
-    }
 }
 
 # Show admin instructions
@@ -641,39 +582,11 @@ function Main {
         # Continue if logging fails
     }
     
-    # Check admin rights and self-elevate if needed
+    # Check admin rights
     if (-not (Test-IsAdministrator)) {
-        Write-Log "Script requires Administrator privileges" "Warning"
-        
-        # In non-interactive mode, attempt elevation automatically
-        if ($Mode -or $Silent) {
-            Write-Log "Non-interactive mode: attempting automatic elevation" "Info"
-            if (Request-SelfElevation) {
-                Write-Log "Elevation request sent, exiting current session" "Info"
-                exit 0
-            } else {
-                Write-Log "Elevation failed" "Error"
-                Show-AdminInstructions
-                exit 1
-            }
-        } else {
-            # Interactive mode - ask user
-            Write-Host ""
-            $elevate = Read-Host "Attempt to elevate privileges automatically? (Y/N)"
-            if ($elevate -eq "Y" -or $elevate -eq "y") {
-                if (Request-SelfElevation) {
-                    Write-Log "Elevation request sent, exiting current session" "Info"
-                    exit 0
-                } else {
-                    Write-Log "Automatic elevation failed" "Warning"
-                    Show-AdminInstructions
-                    exit 1
-                }
-            } else {
-                Show-AdminInstructions
-                exit 1
-            }
-        }
+        Write-Log "Script requires Administrator privileges" "Error"
+        Show-AdminInstructions
+        exit 1
     }
     
     Write-Log "Running with Administrator privileges" "Success"
