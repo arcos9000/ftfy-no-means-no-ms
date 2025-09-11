@@ -135,8 +135,10 @@ function Request-Elevation {
         Write-Log "Found gsudo, attempting elevation..." "Info"
         try {
             $scriptPath = $MyInvocation.MyCommand.Path
-            $arguments = "-ExecutionPolicy Bypass -NoExit -File `"$scriptPath`""
-            if ($Mode) { $arguments += " -Mode $Mode -Silent" }
+            $command = "& `"$scriptPath`""
+            if ($Mode) { $command += " -Mode $Mode -Silent" }
+            $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
+            $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
             Start-Process gsudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
         } catch {
@@ -149,8 +151,10 @@ function Request-Elevation {
         Write-Log "Found sudo, attempting elevation..." "Info"
         try {
             $scriptPath = $MyInvocation.MyCommand.Path
-            $arguments = "-ExecutionPolicy Bypass -NoExit -File `"$scriptPath`""
-            if ($Mode) { $arguments += " -Mode $Mode -Silent" }
+            $command = "& `"$scriptPath`""
+            if ($Mode) { $command += " -Mode $Mode -Silent" }
+            $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
+            $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
             Start-Process sudo -ArgumentList "powershell.exe", $arguments -Wait
             return $true
         } catch {
@@ -162,8 +166,10 @@ function Request-Elevation {
     try {
         Write-Log "Attempting UAC elevation..." "Info"
         $scriptPath = $MyInvocation.MyCommand.Path
-        $arguments = "-ExecutionPolicy Bypass -NoExit -File `"$scriptPath`""
-        if ($Mode) { $arguments += " -Mode $Mode -Silent" }
+        $command = "& `"$scriptPath`""
+        if ($Mode) { $command += " -Mode $Mode -Silent" }
+        $command += "; Write-Host ''; Write-Host 'Script completed. Press any key to close...' -ForegroundColor Green; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
+        $arguments = "-ExecutionPolicy Bypass -NoExit -Command `"$command`""
         
         Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait
         return $true
