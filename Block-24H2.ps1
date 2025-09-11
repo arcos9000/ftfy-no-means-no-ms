@@ -117,70 +117,56 @@ function Write-Log {
     }
 }
 
-# Check for admin privileges
-function Test-Administrator {
-    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
+# Self-elevation function using proven industry standard approach
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Attempt to elevate privileges
-function Request-Elevation {
-    param([string]$Mode)
-    
-    Write-Log "Attempting to elevate privileges..." "Warning"
-    
-    # Get current script path
-    $scriptPath = if ($MyInvocation.MyCommand.Path) { 
-        $MyInvocation.MyCommand.Path 
-    } elseif ($PSCommandPath) { 
-        $PSCommandPath 
-    } else { 
-        (Get-Location).Path + "\Block-24H2.ps1" 
-    }
-    
-    # Try gsudo first (preferred)
-    if (Get-Command gsudo -ErrorAction SilentlyContinue) {
-        Write-Log "Found gsudo, attempting elevation..." "Info"
-        try {
-            if ($Mode) {
-                gsudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`"" -Mode $Mode -Silent
-            } else {
-                gsudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`""
-            }
-            return $true
-        } catch {
-            Write-Log "gsudo elevation failed: $($_.Exception.Message)" "Warning"
-        }
-    }
-    
-    # Try sudo (if available)
-    if (Get-Command sudo -ErrorAction SilentlyContinue) {
-        Write-Log "Found sudo, attempting elevation..." "Info"
-        try {
-            if ($Mode) {
-                sudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`"" -Mode $Mode -Silent
-            } else {
-                sudo powershell.exe -ExecutionPolicy Bypass -NoProfile -File "`"$scriptPath`""
-            }
-            return $true
-        } catch {
-            Write-Log "sudo elevation failed: $($_.Exception.Message)" "Warning"
-        }
-    }
-    
-    # Fallback: UAC elevation
+function Test-IsUacEnabled {
     try {
-        Write-Log "Attempting UAC elevation..." "Info"
-        if ($Mode) {
-            Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-NoProfile", "-File", "`"$scriptPath`"", "-Mode", $Mode, "-Silent" -Verb RunAs
-        } else {
-            Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-NoProfile", "-File", "`"$scriptPath`"" -Verb RunAs
-        }
-        return $true
+        $uacSetting = (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System -ErrorAction SilentlyContinue).EnableLua
+        return ($uacSetting -ne 0)
     } catch {
-        Write-Log "UAC elevation failed: $($_.Exception.Message)" "Warning"
-        return $false
+        return $true  # Assume UAC is enabled if we can't check
+    }
+}
+
+function Request-SelfElevation {
+    Write-Log "Attempting self-elevation..." "Warning"
+    
+    if (!(Test-IsAdministrator)) {
+        if (Test-IsUacEnabled) {
+            Write-Log "UAC is enabled, requesting elevation..." "Info"
+            
+            # Build argument list with proper parameter handling
+            [string[]]$argList = @('-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path)
+            
+            # Add bound parameters
+            $argList += $MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object {
+                "-$($_.Key)"
+                "$($_.Value)"
+            }
+            
+            # Add unbound arguments
+            $argList += $MyInvocation.UnboundArguments
+            
+            try {
+                Start-Process PowerShell.exe -Verb RunAs -ArgumentList $argList -WorkingDirectory $PWD
+                Write-Log "Elevation request sent, exiting current session" "Info"
+                return $true
+            } catch {
+                Write-Log "Failed to request elevation: $($_.Exception.Message)" "Error"
+                return $false
+            }
+        } else {
+            Write-Log "UAC is disabled - you must run as administrator manually" "Error"
+            return $false
+        }
+    } else {
+        Write-Log "Already running as administrator" "Success"
+        return $false  # No elevation needed
     }
 }
 
@@ -642,15 +628,15 @@ function Main {
         # Continue if logging fails
     }
     
-    # Check admin rights
-    if (-not (Test-Administrator)) {
+    # Check admin rights and self-elevate if needed
+    if (-not (Test-IsAdministrator)) {
         Write-Log "Script requires Administrator privileges" "Warning"
         
-        # In non-interactive mode, try elevation
+        # In non-interactive mode, attempt elevation automatically
         if ($Mode -or $Silent) {
-            Write-Log "Attempting automatic elevation for non-interactive mode" "Info"
-            if (Request-Elevation -Mode $Mode) {
-                Write-Log "Elevation successful, exiting this instance" "Info"
+            Write-Log "Non-interactive mode: attempting automatic elevation" "Info"
+            if (Request-SelfElevation) {
+                Write-Log "Elevation request sent, exiting current session" "Info"
                 exit 0
             } else {
                 Write-Log "Elevation failed" "Error"
@@ -662,8 +648,8 @@ function Main {
             Write-Host ""
             $elevate = Read-Host "Attempt to elevate privileges automatically? (Y/N)"
             if ($elevate -eq "Y" -or $elevate -eq "y") {
-                if (Request-Elevation) {
-                    Write-Log "Elevation successful, exiting this instance" "Info"
+                if (Request-SelfElevation) {
+                    Write-Log "Elevation request sent, exiting current session" "Info"
                     exit 0
                 } else {
                     Write-Log "Automatic elevation failed" "Warning"
